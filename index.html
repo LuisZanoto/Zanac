@@ -50,12 +50,20 @@
       margin: 0 2px 6px;
     }
 
+    .audio-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     h1 {
+      flex: 0 0 auto;
       margin: 0;
       color: #f1fbff;
       font-size: clamp(15px, 4vw, 20px);
       letter-spacing: 0.14em;
       text-shadow: 0 0 15px #36d9ff66;
+      white-space: nowrap;
     }
 
     .audio-toggle {
@@ -67,6 +75,28 @@
       letter-spacing: 0.04em;
       white-space: nowrap;
       box-shadow: none;
+    }
+
+    .volume-control {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: #9cc6d7;
+      font-size: 9px;
+      white-space: nowrap;
+    }
+
+    .volume-control input {
+      width: clamp(64px, 17vw, 92px);
+      margin: 0;
+      accent-color: #50dcf4;
+      cursor: pointer;
+    }
+
+    .volume-control output {
+      min-width: 30px;
+      color: #bcefff;
+      text-align: right;
     }
 
     .hud {
@@ -193,13 +223,28 @@
     @media (max-height: 480px) {
       .help { display: none; }
     }
+
+    @media (max-width: 380px) {
+      .audio-controls { gap: 4px; }
+      .volume-control { gap: 3px; }
+      .volume-control input { width: 48px; }
+      .audio-toggle { padding: 4px 5px; font-size: 8px; }
+      h1 { font-size: 13px; letter-spacing: 0.08em; }
+    }
   </style>
 </head>
 <body>
   <main class="cabinet">
     <header>
       <h1>ZANAC 2D</h1>
-      <button class="audio-toggle" id="audio-toggle" type="button" aria-pressed="true">SOM: LIGADO</button>
+      <div class="audio-controls">
+        <label class="volume-control" for="volume-slider">
+          VOL
+          <input id="volume-slider" type="range" min="0" max="100" step="1" value="10" aria-label="Volume do jogo">
+          <output id="volume-value" for="volume-slider">10%</output>
+        </label>
+        <button class="audio-toggle" id="audio-toggle" type="button" aria-pressed="true">SOM: LIGADO</button>
+      </div>
     </header>
 
     <section class="hud" aria-label="Informações da partida">
@@ -224,7 +269,7 @@
     </div>
 
     <p class="help">
-      <b>TECLADO:</b> setas ou WASD para mover · espaço para atirar · P para pausar<br>
+      <b>TECLADO:</b> setas ou WASD para mover · espaço para atirar · P para pausar · +/− volume<br>
       <b>CELULAR:</b> toque e arraste para mover e atirar · colete os itens derrubados!
     </p>
   </main>
@@ -245,6 +290,8 @@
       const messageLabel = document.querySelector("#message");
       const startButton = document.querySelector("#start-button");
       const audioToggle = document.querySelector("#audio-toggle");
+      const volumeSlider = document.querySelector("#volume-slider");
+      const volumeValue = document.querySelector("#volume-value");
       const width = canvas.width;
       const height = canvas.height;
       const keys = new Set();
@@ -287,10 +334,27 @@
         let musicStep = 0;
         let nextMusicStep = 0;
         let enabled = true;
+        let volume = 0.1;
 
         function updateButton() {
           audioToggle.textContent = enabled ? "SOM: LIGADO" : "SOM: MUDO";
           audioToggle.setAttribute("aria-pressed", String(enabled));
+        }
+
+        function updateVolumeControl() {
+          const percent = Math.round(volume * 100);
+          volumeSlider.value = String(percent);
+          volumeValue.value = `${percent}%`;
+          volumeValue.textContent = `${percent}%`;
+          volumeSlider.setAttribute("aria-valuetext", `${percent}%`);
+        }
+
+        function setVolume(value) {
+          volume = Math.max(0, Math.min(1, value));
+          updateVolumeControl();
+          if (master && context) {
+            master.gain.setTargetAtTime(enabled ? volume : 0, context.currentTime, 0.02);
+          }
         }
 
         function initialize() {
@@ -313,7 +377,7 @@
             master = context.createGain();
             sfxBus = context.createGain();
             musicBus = context.createGain();
-            master.gain.value = enabled ? 0.55 : 0;
+            master.gain.value = enabled ? volume : 0;
             sfxBus.gain.value = 0.7;
             musicBus.gain.value = 0.3;
             sfxBus.connect(master);
@@ -426,12 +490,13 @@
           enabled = !enabled;
           updateButton();
           if (!initialize()) return;
-          master.gain.setTargetAtTime(enabled ? 0.55 : 0, context.currentTime, 0.02);
+          master.gain.setTargetAtTime(enabled ? volume : 0, context.currentTime, 0.02);
           if (enabled && state === "playing") startMusic();
           else stopMusic();
         }
 
-        return { shoot, hit, explosion, powerUp, bossWarning, startMusic, stopMusic, toggle };
+        updateVolumeControl();
+        return { shoot, hit, explosion, powerUp, bossWarning, startMusic, stopMusic, toggle, setVolume };
       })();
 
       try {
@@ -987,9 +1052,17 @@
         else beginGame();
       });
       audioToggle.addEventListener("click", () => audio.toggle());
+      volumeSlider.addEventListener("input", () => audio.setVolume(Number(volumeSlider.value) / 100));
 
       window.addEventListener("keydown", event => {
         const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+        const volumeUp = key === "+" || key === "=" || event.code === "NumpadAdd";
+        const volumeDown = key === "-" || event.code === "NumpadSubtract";
+        if (volumeUp || volumeDown) {
+          event.preventDefault();
+          audio.setVolume(Number(volumeSlider.value) / 100 + (volumeUp ? 0.05 : -0.05));
+          return;
+        }
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(key)) event.preventDefault();
         keys.add(key);
         if (key === "p" && (state === "playing" || state === "paused")) pauseGame();
