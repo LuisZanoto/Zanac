@@ -16,11 +16,13 @@
     * { box-sizing: border-box; }
 
     body {
-      min-height: 100vh;
+      height: 100vh;
+      height: 100dvh;
       margin: 0;
       display: grid;
       place-items: center;
-      padding: 24px 14px;
+      overflow: hidden;
+      padding: 8px;
       background:
         radial-gradient(ellipse at 50% 8%, #142e48 0, transparent 42%),
         linear-gradient(180deg, #07111f, #03070d 78%);
@@ -28,7 +30,11 @@
 
     .cabinet {
       width: min(100%, 570px);
-      padding: 18px;
+      height: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: clamp(6px, 1.5vh, 14px);
       border: 1px solid #264965;
       border-radius: 12px;
       background: linear-gradient(145deg, #102236, #091522 60%, #07101b);
@@ -39,86 +45,70 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      margin: 0 2px 12px;
+      gap: 8px;
+      flex: 0 0 auto;
+      margin: 0 2px 6px;
     }
 
     h1 {
       margin: 0;
       color: #f1fbff;
-      font-size: clamp(18px, 4vw, 23px);
+      font-size: clamp(15px, 4vw, 20px);
       letter-spacing: 0.14em;
       text-shadow: 0 0 15px #36d9ff66;
     }
 
-    .subtitle {
-      margin-top: 4px;
-      color: #7ba4bd;
-      font-size: 10px;
-      letter-spacing: 0.14em;
-    }
-
-    .badge {
-      padding: 6px 8px;
-      border: 1px solid #27546d;
-      border-radius: 4px;
-      color: #72eaff;
-      font-size: 10px;
-      white-space: nowrap;
-    }
-
     .audio-toggle {
-      padding: 6px 8px;
+      padding: 4px 7px;
       border-color: #27546d;
       background: #091522;
       color: #72eaff;
-      font-size: 10px;
+      font-size: 9px;
       letter-spacing: 0.04em;
       white-space: nowrap;
       box-shadow: none;
     }
 
-    .audio-controls {
-      display: flex;
-      justify-content: flex-end;
-      margin: -4px 2px 8px;
-    }
-
     .hud {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      margin-bottom: 0;
-      padding: 9px 12px;
+      flex: 0 0 auto;
+      padding: 5px 8px;
       border: 1px solid #1b3c53;
       background: #07111c;
       color: #7ba4bd;
-      font-size: 11px;
-      letter-spacing: 0.08em;
+      font-size: 9px;
+      letter-spacing: 0.04em;
     }
 
     .hud span:nth-child(2) { text-align: center; }
     .hud span:last-child { text-align: right; }
-    .hud strong { color: #e1faff; font-size: 14px; }
+    .hud strong { color: #e1faff; font-size: 11px; }
     #lives { color: #ff718b; letter-spacing: 0.04em; }
 
     .equipment {
       display: flex;
       justify-content: space-between;
       gap: 8px;
-      margin-bottom: 9px;
-      padding: 7px 12px;
+      flex: 0 0 auto;
+      padding: 4px 8px;
       border: 1px solid #1b3c53;
       border-top: 0;
       background: #091522;
       color: #7ba4bd;
-      font-size: 10px;
-      letter-spacing: 0.06em;
+      font-size: 9px;
+      letter-spacing: 0.04em;
     }
 
     .equipment strong { color: #bcefff; font-weight: normal; }
 
     .screen {
       position: relative;
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       overflow: hidden;
       border: 2px solid #32617a;
       background: #030914;
@@ -127,8 +117,11 @@
 
     canvas {
       display: block;
-      width: 100%;
+      width: auto;
       height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      aspect-ratio: 3 / 4;
       image-rendering: pixelated;
       touch-action: none;
     }
@@ -187,41 +180,32 @@
     }
 
     .help {
-      margin: 11px 2px 0;
+      flex: 0 0 auto;
+      margin: 5px 2px 0;
       color: #7495a8;
-      font-size: 10px;
-      line-height: 1.7;
+      font-size: clamp(8px, 1.4vh, 10px);
+      line-height: 1.35;
       text-align: center;
     }
 
     .help b { color: #bcefff; font-weight: normal; }
 
-    @media (max-width: 420px) {
-      body { padding: 10px 8px; }
-      .cabinet { padding: 11px; }
-      .badge { font-size: 9px; }
-      .help { font-size: 9px; }
-      .equipment { font-size: 9px; padding-inline: 8px; }
+    @media (max-height: 480px) {
+      .help { display: none; }
     }
   </style>
 </head>
 <body>
   <main class="cabinet">
     <header>
-      <div>
-        <h1>ZANAC 2D</h1>
-        <div class="subtitle">PATRULHA ESTELAR // SETOR 07</div>
-      </div>
-      <span class="badge">MISSÃO 01</span>
-    </header>
-    <div class="audio-controls">
+      <h1>ZANAC 2D</h1>
       <button class="audio-toggle" id="audio-toggle" type="button" aria-pressed="true">SOM: LIGADO</button>
-    </div>
+    </header>
 
     <section class="hud" aria-label="Informações da partida">
-      <span>PONTOS<br><strong id="score">000000</strong></span>
-      <span>RECORDE<br><strong id="best">000000</strong></span>
-      <span>VIDAS<br><strong id="lives">♥ × 10</strong></span>
+      <span>PONTOS <strong id="score">000000</strong></span>
+      <span>RECORDE <strong id="best">000000</strong></span>
+      <span>VIDAS <strong id="lives">♥ × 10</strong></span>
     </section>
     <div class="equipment" aria-label="Equipamentos da nave">
       <span>ESCUDOS <strong id="shield-count">0</strong></span>
