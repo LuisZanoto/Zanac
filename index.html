@@ -67,6 +67,23 @@
       white-space: nowrap;
     }
 
+    .audio-toggle {
+      padding: 6px 8px;
+      border-color: #27546d;
+      background: #091522;
+      color: #72eaff;
+      font-size: 10px;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      box-shadow: none;
+    }
+
+    .audio-controls {
+      display: flex;
+      justify-content: flex-end;
+      margin: -4px 2px 8px;
+    }
+
     .hud {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -197,6 +214,9 @@
       </div>
       <span class="badge">MISSÃO 01</span>
     </header>
+    <div class="audio-controls">
+      <button class="audio-toggle" id="audio-toggle" type="button" aria-pressed="true">SOM: LIGADO</button>
+    </div>
 
     <section class="hud" aria-label="Informações da partida">
       <span>PONTOS<br><strong id="score">000000</strong></span>
@@ -240,6 +260,7 @@
       const titleLabel = document.querySelector("#message-title");
       const messageLabel = document.querySelector("#message");
       const startButton = document.querySelector("#start-button");
+      const audioToggle = document.querySelector("#audio-toggle");
       const width = canvas.width;
       const height = canvas.height;
       const keys = new Set();
@@ -267,6 +288,167 @@
       let pickups = [];
       let laserBeams = [];
       let particles = [];
+
+      const audio = (() => {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        const tempo = 144;
+        const beatDuration = 60 / tempo;
+        const melody = [659, 0, 784, 0, 880, 0, 784, 0, 659, 0, 587, 0, 523, 0, 587, 0];
+        const bass = [110, 0, 110, 0, 147, 0, 147, 0, 98, 0, 98, 0, 131, 0, 131, 0];
+        let context = null;
+        let master = null;
+        let sfxBus = null;
+        let musicBus = null;
+        let musicTimer = null;
+        let musicStep = 0;
+        let nextMusicStep = 0;
+        let enabled = true;
+
+        function updateButton() {
+          audioToggle.textContent = enabled ? "SOM: LIGADO" : "SOM: MUDO";
+          audioToggle.setAttribute("aria-pressed", String(enabled));
+        }
+
+        function initialize() {
+          if (!AudioContextClass) {
+            audioToggle.textContent = "SOM: INDISP.";
+            audioToggle.disabled = true;
+            audioToggle.setAttribute("aria-label", "Áudio indisponível neste navegador");
+            return false;
+          }
+          if (!context) {
+            try {
+              context = new AudioContextClass();
+            } catch (error) {
+              console.error("Não foi possível iniciar o áudio do jogo.", error);
+              audioToggle.textContent = "SOM: ERRO";
+              audioToggle.disabled = true;
+              audioToggle.setAttribute("aria-label", "Não foi possível iniciar o áudio");
+              return false;
+            }
+            master = context.createGain();
+            sfxBus = context.createGain();
+            musicBus = context.createGain();
+            master.gain.value = enabled ? 0.55 : 0;
+            sfxBus.gain.value = 0.7;
+            musicBus.gain.value = 0.3;
+            sfxBus.connect(master);
+            musicBus.connect(master);
+            master.connect(context.destination);
+          }
+          if (context.state === "suspended") {
+            context.resume().catch(error => {
+              console.error("Não foi possível liberar o áudio do jogo.", error);
+            });
+          }
+          return true;
+        }
+
+        function tone({ wave = "square", startHz, endHz = startHz, duration = 0.1, volume = 0.2, attack = 0.005, bus = null, at = null }) {
+          if (!enabled || !initialize()) return;
+          const startAt = at === null ? context.currentTime : at;
+          const oscillator = context.createOscillator();
+          const envelope = context.createGain();
+          const endAt = startAt + duration;
+          oscillator.type = wave;
+          oscillator.frequency.setValueAtTime(startHz, startAt);
+          if (endHz !== startHz) {
+            oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, endHz), endAt);
+          }
+          envelope.gain.setValueAtTime(0.001, startAt);
+          envelope.gain.exponentialRampToValueAtTime(volume, startAt + Math.min(attack, duration / 2));
+          envelope.gain.exponentialRampToValueAtTime(0.001, endAt);
+          oscillator.connect(envelope);
+          envelope.connect(bus || sfxBus);
+          oscillator.start(startAt);
+          oscillator.stop(endAt + 0.01);
+        }
+
+        function shoot() {
+          tone({ startHz: 1200, endHz: 250, duration: 0.08, volume: 0.18 });
+        }
+
+        function hit() {
+          tone({ startHz: 420, endHz: 110, duration: 0.13, volume: 0.24 });
+        }
+
+        function explosion() {
+          tone({ wave: "triangle", startHz: 170, endHz: 42, duration: 0.24, volume: 0.3 });
+          if (!enabled || !initialize()) return;
+          const length = Math.floor(context.sampleRate * 0.18);
+          const buffer = context.createBuffer(1, length, context.sampleRate);
+          const samples = buffer.getChannelData(0);
+          for (let i = 0; i < length; i++) samples[i] = Math.random() * 2 - 1;
+          const noise = context.createBufferSource();
+          const envelope = context.createGain();
+          noise.buffer = buffer;
+          envelope.gain.setValueAtTime(0.16, context.currentTime);
+          envelope.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.18);
+          noise.connect(envelope);
+          envelope.connect(sfxBus);
+          noise.start();
+          noise.stop(context.currentTime + 0.18);
+        }
+
+        function powerUp() {
+          const now = context ? context.currentTime : 0;
+          [440, 660, 880].forEach((frequency, index) => {
+            tone({
+              wave: "triangle", startHz: frequency, duration: 0.15, volume: 0.2,
+              at: now + index * 0.09
+            });
+          });
+        }
+
+        function bossWarning() {
+          const now = context ? context.currentTime : 0;
+          [0, 0.22, 0.44].forEach(offset => {
+            tone({ startHz: 220, endHz: 180, duration: 0.14, volume: 0.25, at: now + offset });
+          });
+          tone({ startHz: 440, endHz: 330, duration: 0.4, volume: 0.25, at: now + 0.68 });
+        }
+
+        function stopMusic() {
+          if (musicTimer !== null) {
+            window.clearInterval(musicTimer);
+            musicTimer = null;
+          }
+          if (musicBus && context) {
+            musicBus.gain.cancelScheduledValues(context.currentTime);
+            musicBus.gain.setTargetAtTime(0, context.currentTime, 0.025);
+          }
+        }
+
+        function startMusic() {
+          if (!enabled || !initialize() || musicTimer !== null) return;
+          musicBus.gain.cancelScheduledValues(context.currentTime);
+          musicBus.gain.setTargetAtTime(0.3, context.currentTime, 0.04);
+          musicStep = 0;
+          nextMusicStep = context.currentTime + 0.04;
+          musicTimer = window.setInterval(() => {
+            const scheduleUntil = context.currentTime + 0.1;
+            while (nextMusicStep < scheduleUntil) {
+              const note = melody[musicStep];
+              const bassNote = bass[musicStep];
+              if (note) tone({ startHz: note, duration: 0.19, volume: 0.12, bus: musicBus, at: nextMusicStep });
+              if (bassNote) tone({ wave: "triangle", startHz: bassNote, duration: 0.3, volume: 0.16, bus: musicBus, at: nextMusicStep });
+              musicStep = (musicStep + 1) % melody.length;
+              nextMusicStep += beatDuration;
+            }
+          }, 25);
+        }
+
+        function toggle() {
+          enabled = !enabled;
+          updateButton();
+          if (!initialize()) return;
+          master.gain.setTargetAtTime(enabled ? 0.55 : 0, context.currentTime, 0.02);
+          if (enabled && state === "playing") startMusic();
+          else stopMusic();
+        }
+
+        return { shoot, hit, explosion, powerUp, bossWarning, startMusic, stopMusic, toggle };
+      })();
 
       try {
         best = Number(localStorage.getItem("zanac2d-best")) || 0;
@@ -311,6 +493,7 @@
         state = "playing";
         overlay.hidden = true;
         lastTime = performance.now();
+        audio.startMusic();
       }
 
       function pauseGame() {
@@ -320,15 +503,18 @@
           messageLabel.innerHTML = "Aperte <b>P</b> para continuar.";
           startButton.textContent = "CONTINUAR";
           overlay.hidden = false;
+          audio.stopMusic();
         } else if (state === "paused") {
           state = "playing";
           overlay.hidden = true;
           lastTime = performance.now();
+          audio.startMusic();
         }
       }
 
       function endGame() {
         state = "gameover";
+        audio.stopMusic();
         titleLabel.textContent = "FIM DE JOGO";
         messageLabel.innerHTML = `Pontuação: <b>${formatScore(score)}</b><br>A colônia ainda precisa de você.`;
         startButton.textContent = "TENTAR NOVAMENTE";
@@ -361,6 +547,7 @@
       }
 
       function fire() {
+        audio.shoot();
         const y = player.y - 20;
         if (player.weapon === "giratorio") {
           const count = 8;
@@ -385,6 +572,7 @@
 
       function hitPlayer() {
         if (player.invulnerable > 0) return;
+        audio.hit();
         if (player.shields > 0) player.shields--;
         else lives--;
         player.invulnerable = 1.65;
@@ -405,6 +593,7 @@
       }
 
       function destroyEnemy(index, enemy) {
+        audio.explosion();
         addBurst(enemy.x, enemy.y, enemy.kind === "heavy" ? "#ffad62" : "#ff5f83");
         awardPoints(enemy.kind === "heavy" ? 300 : enemy.kind === "life" || enemy.kind === "shield" ? 250 : 100);
         dropPickup(enemy);
@@ -412,6 +601,7 @@
       }
 
       function applyPickup(pickup) {
+        audio.powerUp();
         if (pickup.type === "vida") lives = Math.min(10, lives + 1);
         else if (pickup.type === "escudo") player.shields = Math.min(3, player.shields + 1);
         else {
@@ -519,6 +709,7 @@
             if (!beam.hit.has(enemy) && Math.abs(enemy.x - beam.x) < enemy.radius + 7 && enemy.y < player.y) {
               beam.hit.add(enemy);
               enemy.hp--;
+              if (enemy.hp > 0) audio.hit();
               if (enemy.hp <= 0) {
                 destroyEnemy(i, enemy);
                 destroyed = true;
@@ -532,6 +723,7 @@
             if (Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y) < enemy.radius + bullet.radius) {
               bullets.splice(j, 1);
               enemy.hp--;
+              if (enemy.hp > 0) audio.hit();
               if (enemy.hp <= 0) {
                 destroyEnemy(i, enemy);
                 destroyed = true;
@@ -810,6 +1002,7 @@
         if (state === "paused") pauseGame();
         else beginGame();
       });
+      audioToggle.addEventListener("click", () => audio.toggle());
 
       window.addEventListener("keydown", event => {
         const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
